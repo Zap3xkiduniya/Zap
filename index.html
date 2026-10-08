@@ -1731,4 +1731,971 @@ function buildProducts(){
       fit: FITS[i % FITS.length],
       fabric: FABRICS[i % FABRICS.length],
       tags: [cat, isNew ? 'new' : '', isBest ? 'best' : '', hasDiscount ? 'sale' : ''].filter(Boolean),
-      description: `A ZAPWEAR essential — ${name.toLowerCase()}. Cut in a ${FITS[i % FITS.length].toLowerCase()} silhouette from ${FABRICS[i % FABRICS.length]}, finished with tonal embroidery and a
+      description: `A ZAPWEAR essential — ${name.toLowerCase()}. Cut in a ${FITS[i % FITS.length].toLowerCase()} silhouette from ${FABRICS[i % FABRICS.length]}, woven ZAPWEAR label at the hem.`
+    });
+  });
+  return products;
+}
+
+const PRODUCTS = buildProducts();
+
+/* ============================================================
+   State
+   ============================================================ */
+const state = {
+  cart: [],
+  wishlist: [],
+  view: 'home',
+  collection: 'all',
+  product: null,
+  filters: {
+    cats: new Set(),
+    sizes: new Set(),
+    colors: new Set(),
+    price: null,
+    rating: null,
+    stock: null
+  },
+  sort: 'featured'
+};
+
+/* ============================================================
+   Utilities
+   ============================================================ */
+function showToast(msg) {
+  const t = $('#toast');
+  $('#toastMsg').textContent = msg;
+  t.classList.add('on');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('on'), 2600);
+}
+
+function saveState() {
+  try {
+    localStorage.setItem('zap_cart', JSON.stringify(state.cart));
+    localStorage.setItem('zap_wish', JSON.stringify(state.wishlist));
+  } catch (e) {}
+}
+
+function loadState() {
+  try {
+    const c = localStorage.getItem('zap_cart');
+    const w = localStorage.getItem('zap_wish');
+    if (c) state.cart = JSON.parse(c);
+    if (w) state.wishlist = JSON.parse(w);
+  } catch (e) {}
+}
+
+/* ============================================================
+   Cart
+   ============================================================ */
+function cartCount() {
+  return state.cart.reduce((s, i) => s + i.qty, 0);
+}
+
+function cartSubtotal() {
+  return state.cart.reduce((s, i) => s + i.price * i.qty, 0);
+}
+
+function addToCart(product, size, color, qty = 1) {
+  const key = product.id + '|' + size + '|' + color.name;
+  const existing = state.cart.find(i => i.key === key);
+  if (existing) {
+    existing.qty += qty;
+  } else {
+    state.cart.push({
+      key,
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      image: product.images[0],
+      size,
+      color: color.name,
+      qty
+    });
+  }
+  saveState();
+  updateCartUI();
+  openCart();
+  showToast('✓ Added to bag');
+}
+
+function removeFromCart(key) {
+  state.cart = state.cart.filter(i => i.key !== key);
+  saveState();
+  updateCartUI();
+}
+
+function updateQty(key, delta) {
+  const item = state.cart.find(i => i.key === key);
+  if (!item) return;
+  item.qty += delta;
+  if (item.qty <= ').0) {
+    removeFromCart(key);
+ text } else {
+   Content saveState();
+    updateCart =UI();
+  }
+}
+
+function update fmtCartUI() {
+  const count(sub = cartCount();
+  $('#cartBadge').textContent = count;
+  $('#cartBadge').classList.toggle('on', count > 0);
+  $('#mWishBadge').textContent = state.wishlist.length;
+  $('#mWishBadge').classList.toggle('on', state.wishlist.length > 0);
+  $('#wishBadge').textContent = state.wishlist.length;
+  $('#wishBadge').classList.toggle('on', state.wishlist.length > 0);
+  $('#cartCountLabel').textContent = `(${count})`;
+
+  const sub = cartSubtotal();
+  const shipEl = $('#cartShip');
+  const shipMsg = $('#shipMsg');
+  const shipBar = $('#shipBar');
+
+  if (sub >= FREE_SHIP) {
+    shipEl.classList.add('done');
+    shipMsg.innerHTML = '✓ FREE SHIPPING UNLOCKED';
+    shipBar.style.width = '100%';
+  } else {
+    shipEl.classList.remove('done');
+    const left = FREE_SHIP - sub;
+    shipMsg.innerHTML = `You're <strong>${fmt(left)}</strong> away from FREE SHIPPING`;
+    shipBar.style.width = Math.min(100, (sub / FREE_SHIP) * 100) + '%';
+  }
+
+  const itemsEl = $('#cartItems');
+  const footEl = $('#cartFoot');
+
+  if (state.cart.length === 0) {
+    itemsEl.innerHTML = `
+      <div class="cart-empty">
+        <svg viewBox="0 0 24 24"><path d="M6 7h12l1 13H5L6 7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>
+        <h4>Your bag is empty</h4>
+        <p>Add something you love and it'll show up here.</p>
+        <button class="btn btn-primary btn-sm" data-nav="collection" data-cat="all" style="margin-top:8px">Start Shopping</button>
+      </div>`;
+    footEl.style.display = 'none';
+  } else {
+    itemsEl.innerHTML = state.cart.map(item => `
+      <div class="ci" data-key="${item.key}">
+        <div class="ci-img"><img src="${item.image}" alt="${item.name}" loading="lazy" onerror="this.src='${imgAlt(0,200,260)}'"/></div>
+        <div class="ci-body">
+          <h4>${item.name}</h4>
+          <div class="ci-meta">Size ${item.size} · ${item.color}</div>
+          <div class="ci-row">
+            <div class="qty">
+              <button data-dec="${item.key}" aria-label="Decrease quantity">−</button>
+              <span>${item.qty}</span>
+              <button data-inc="${item.key}" aria-label="Increase quantity">+</button>
+            </div>
+            <div class="ci-price">${fmt(item.price * item.qty)}</div>
+          </div>
+          <button class="ci-remove" data-remove="${item.key}">Remove</button>
+        </div>
+      </div>
+    `).join('');
+    footEl.style.display = 'block';
+    $('#cartSub').textContent = fmt(sub);
+    const shipCost = sub >= FREE_SHIP ? 'Free' : 'Calculated at checkout';
+    $('#cartShipCost').textContent = shipCost;
+    $('#cartTotal);
+  }
+}
+
+function openCart() {
+  $('#cartDrawer').classList.add('on');
+  $('#cartDrawer').setAttribute('aria-hidden', 'false');
+  $('#overlay').classList.add('on');
+  document.body.classList.add('no-scroll');
+}
+
+function closeCart() {
+  $('#cartDrawer').classList.remove('on');
+  $('#cartDrawer').setAttribute('aria-hidden', 'true');
+  $('#overlay').classList.remove('on');
+  document.body.classList.remove('no-scroll');
+}
+
+/* ============================================================
+   Wishlist
+   ============================================================ */
+function toggleWishlist(product) {
+  const idx = state.wishlist.findIndex(i => i.id === product.id);
+  if (idx > -1) {
+    state.wishlist.splice(idx, 1);
+    showToast('Removed from wishlist');
+  } else {
+    state.wishlist.push({
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      image: product.images[0]
+    });
+    showToast('♥ Saved to wishlist');
+  }
+  saveState();
+  updateCartUI();
+  document.querySelectorAll(`.pcard-wish[data-id="${product.id}"]`).forEach(el => {
+    el.classList.toggle('on', state.wishlist.some(i => i.id === product.id));
+  });
+  const pdpWish = $('#pdpWish');
+  if (pdpWish && state.product && state.product.id === product.id) {
+    pdpWish.classList.toggle('on', state.wishlist.some(i => i.id === product.id));
+  }
+  const acctWish = $('#acctWish');
+  if (acctWish) acctWish.textContent = state.wishlist.length + ' saved pieces awaiting you.';
+}
+
+function isWished(id) {
+  return state.wishlist.some(i => i.id === id);
+}
+
+/* ============================================================
+   Product Card
+   ============================================================ */
+function productCard(p) {
+  const wished = isWished(p.id);
+  const img1 = p.images[0];
+  const img2 = p.images[1] || p.images[0];
+  return `
+    <article class="pcard" data-id="${p.id}">
+      <div class="pcard-media">
+        <img class="pri" src="${img1}" alt="${p.name}" loading="lazy" onerror="this.src='${imgAlt(p.imgSeeds[0],900,1200)}'"/>
+        <img class="sec" src="${img2}" alt="${p.name} alternate view" loading="lazy" onerror="this.src='${imgAlt(p.imgSeeds[1],900,1200)}'"/>
+        <div class="pcard-badges">
+          ${p.isNew ? '<span class="bdg bdg-new">New</span>' : ''}
+          ${p.isBest ? '<span class="bdg bdg-best">Bestseller</span>' : ''}
+          ${p.off > 0 ? `<span class="bdg bdg-sale">−${p.off}%</span>` : ''}
+        </div>
+        <button class="pcard-wish ${wished ? 'on' : ''}" data-id="${p.id}" aria-label="Add to wishlist">
+          <svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 1 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"/></svg>
+        </button>
+        <div class="pcard-quick">
+          <button class="btn" data-quick="${p.id}">Quick Add</button>
+        </div>
+      </div>
+      <div class="pcard-info">
+        <div>
+          <h3>${p.name}</h3>
+          <div class="cat-lbl">${p.catLabel}</div>
+          <div class="pcard-rate"><span class="st">★★★★★</span> ${p.rating} · ${p.reviews}</div>
+          <div class="swatches">
+            ${p.colors.map(c => `<span class="sw" style="background:${c.hex}" title="${c.name}"></span>`).join('')}
+          </div>
+        </div>
+        <div class="pcard-price">
+          <div class="now">${fmt(p.price)}</div>
+          ${p.off > 0 ? `<div class="was">${fmt(p.original)}</div><div class="off">${p.off}% off</div>` : ''}
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+/* ============================================================
+   Render Home
+   ============================================================ */
+function renderHome() {
+  const catStrip = $('#catStrip');
+  const catImages = [
+    'photo-1521572163474-6864f9cf17ab',
+    'photo-1556821840-3a63f95609a7',
+    'photo-1620799140408-edc6dcb6d633',
+    'photo-1618354691373-d851c5c3a990'
+  ];
+  catStrip.innerHTML = CATS.slice(0, 4).map((c, i) => {
+    const count = PRODUCTS.filter(p => p.cat === c.id).length;
+    return `
+      <div class="cat reveal" data-nav="collection" data-cat="${c.id}">
+        <img src="https://images.unsplash.com/${catImages[i]}?auto=format&fit=crop&w=800&h=1000&q=80" alt="${c.label}" loading="lazy" onerror="this.src='${imgAlt(i,800,1000)}'"/>
+        <div class="cat-info">
+          <div class="num">${String(i + 1).padStart(2, '0')} / ${CATS.length}</div>
+          <h3>${c.label}</h3>
+          <p>${count} pieces</p>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const newProducts = PRODUCTS.filter(p => p.isNew).slice(0, 8);
+  $('#newGrid').innerHTML = newProducts.map(productCard).join('');
+
+  const bestProducts = PRODUCTS.filter(p => p.isBest).slice(0, 8);
+  $('#bestGrid').innerHTML = bestProducts.map(productCard).join('');
+
+  const hoodProducts = PRODUCTS.filter(p => p.cat === 'hoodies').slice(0, 4);
+  $('#hoodGrid').innerHTML = hoodProducts.map(productCard).join('');
+
+  requestAnimationFrame(observeReveals);
+}
+
+/* ============================================================
+   Collection
+   ============================================================ */
+function getFilteredProducts() {
+  let list = PRODUCTS.slice();
+
+  if (state.collection && state.collection !== 'all') {
+    if (state.collection === 'new') list = list.filter(p => p.isNew);
+    else if (state.collection === 'best') list = list.filter(p => p.isBest);
+    else if (state.collection === 'sale') list = list.filter(p => p.off > 0);
+    else if (state.collection === 'limited') list = list.slice(0, 12);
+    else list = list.filter(p => p.cat === state.collection);
+  }
+
+  if (state.filters.cats.size) list = list.filter(p => state.filters.cats.has(p.cat));
+  if (state.filters.sizes.size) list = list.filter(p => p.sizes.some(s => state.filters.sizes.has(s)));
+  if (state.filters.colors.size) list = list.filter(p => p.colors.some(c => state.filters.colors.has(c.name)));
+  if (state.filters.price) {
+    const [min, max] = state.filters.price;
+    list = list.filter(p => p.price >= min && p.price <= max);
+  }
+  if (state.filters.rating) list = list.filter(p => p.rating >= state.filters.rating);
+  if (state.filters.stock) list = list.filter(p => p.stock > 0);
+
+  switch (state.sort) {
+    case 'new': list.sort((a, b) => (b.isNew ? 1 : 0) - (a.isNew ? 1 : 0)); break;
+    case 'price-asc': list.sort((a, b) => a.price - b.price); break;
+    case 'price-desc': list.sort((a, b) => b.price - a.price); break;
+    case 'rating': list.sort((a, b) => b.rating - a.rating); break;
+    default: list.sort((a, b) => (b.isBest ? 1 : 0) - (a.isBest ? 1 : 0));
+  }
+  return list;
+}
+
+function renderCollection() {
+  const list = getFilteredProducts();
+  $('#colCount').textContent = `${list.length} piece${list.length !== 1 ? 's' : ''}`;
+  const grid = $('#colGrid');
+  if (list.length === 0) {
+    grid.innerHTML = `<div class="empty-state"><h3>No pieces found</h3><p>Try adjusting your filters or explore the full collection.</p></div>`;
+  } else {
+    grid.innerHTML = list.map(productCard).join('');
+  }
+
+  const titles = {
+    all: ['All <em>Pieces</em>', 'Every ZAPWEAR silhouette, in one place.'],
+    new: ['New <em>Arrivals</em>', 'Fresh off the drop — the latest ZAPWEAR releases.'],
+    best: ['<em>Bestsellers</em>', 'The pieces everyone owns. Proven, loved, restocked.'],
+    sale: ['The <em>Archive Sale</em>', 'Past-season pieces at reduced prices. Limited stock.'],
+    limited: ['Drop 04 — <em>Midnight</em>', 'Twenty-four numbered pieces. Never restocked.'],
+    oversized: ['Oversized <em>Tees</em>', 'Boxy fits, heavyweight cotton, everyday armour.'],
+    graphic: ['Graphic <em>Tees</em>', 'Statement prints on premium jersey.'],
+    hoodies: ['<em>Hoodies</em>', 'Heavyweight fleece. Built to outlast trends.'],
+    sweatshirts: ['<em>Sweatshirts</em>', 'Clean crewnecks and half-zips.'],
+    cargo: ['<em>Cargo Pants</em>', 'Utility silhouettes with room to move.'],
+    joggers: ['<em>Joggers</em>', 'Tapered comfort. Everyday motion.'],
+    jackets: ['<em>Jackets</em>', 'Overshirts, bombers and shells.'],
+    accessories: ['<em>Accessories</em>', 'The finishing details.']
+  };
+  const [t, d] = titles[state.collection] || titles.all;
+  $('#colTitle').innerHTML = t;
+  $('#colDesc').textContent = d;
+  $('#colCrumb').textContent = state.collection === 'all' ? 'Shop' : (CATS.find(c => c.id === state.collection)?.label || state.collection);
+
+  renderFilters();
+  requestAnimationFrame(observeReveals);
+}
+
+function renderFilters() {
+  const fCat = $('#fCat');
+  fCat.innerHTML = CATS.map(c => `
+    <label class="fopt">
+      <input type="checkbox" data-fcat="${c.id}" ${state.filters.cats.has(c.id) ? 'checked' : ''}/>
+      <span>${c.label}</span>
+      <span class="n">${PRODUCTS.filter(p => p.cat === c.id).length}</span>
+    </label>
+  `).join('');
+
+  const fSize = $('#fSize');
+  fSize.innerHTML = SIZES.map(s => `
+    <div class="fsize ${state.filters.sizes.has(s) ? 'on' : ''}" data-fsize="${s}">${s}</div>
+  `).join('');
+
+  const fColor = $('#fColor');
+  fColor.innerHTML = COLORS.map(c => `
+    <div class="fcolor ${state.filters.colors.has(c.name) ? 'on' : ''}" data-fcolor="${c.name}" title="${c.name}">
+      <i style="background:${c.hex}"></i>
+    </div>
+  `).join('');
+
+  const fPrice = $('#fPrice');
+  const priceRanges = [
+    { label: 'Under ₹1,500', min: 0, max: 1500 },
+    { label: '₹1,500 – ₹2,500', min: 1500, max: 2500 },
+    { label: '₹2,500 – ₹4,000', min: 2500, max: 4000 },
+    { label: '₹4,000+', min: 4000, max: 99999 }
+  ];
+  fPrice.innerHTML = priceRanges.map(r => `
+    <label class="fopt">
+      <input type="radio" name="price" data-fprice="${r.min}-${r.max}" ${state.filters.price && state.filters.price[0] === r.min && state.filters.price[1] === r.max ? 'checked' : ''}/>
+      <span>${r.label}</span>
+    </label>
+  `).join('') + `<label class="fopt"><input type="radio" name="price" data-fprice="all" ${!state.filters.price ? 'checked' : ''}/><span>All prices</span></label>`;
+
+  const fRating = $('#fRating');
+  fRating.innerHTML = [4, 3, 2].map(r => `
+    <label class="fopt">
+      <input type="radio" name="rating" data-frating="${r}" ${state.filters.rating === r ? 'checked' : ''}/>
+      <span>${r}★ & above</span>
+    </label>
+  `).join('') + `<label class="fopt"><input type="radio" name="rating" data-frating="all" ${!state.filters.rating ? 'checked' : ''}/><span>All ratings</span></label>`;
+
+  const fStock = $('#fStock');
+  fStock.innerHTML = `
+    <label class="fopt">
+      <input type="checkbox" data-fstock="in" ${state.filters.stock ? 'checked' : ''}/>
+      <span>In stock only</span>
+    </label>
+  `;
+}
+
+/* ============================================================
+   Product Page
+   ============================================================ */
+function renderProduct(id) {
+  const p = PRODUCTS.find(x => x.id === id);
+  if (!p) { go('home'); return; }
+  state.product = p;
+
+  const wished = isWished(p.id);
+  const sizesHtml = p.sizes.map(s => `<button class="size" data-size="${s}">${s}</button>`).join('');
+  const colorsHtml = p.colors.map((c, i) => `
+    <div class="color ${i === 0 ? 'on' : ''}" data-color="${c.name}" title="${c.name}">
+      <i style="background:${c.hex}"></i>
+    </div>
+  `).join('');
+
+  $('#pdpCrumb').textContent = p.name;
+  $('#pdpRoot').innerHTML = `
+    <div class="pdp-gallery">
+      <div class="pdp-stage" id="pdpStage">
+        ${p.images.map((src, i) => `<img class="${i === 0 ? 'on' : ''}" src="${src}" alt="${p.name} view ${i + 1}" onerror="this.src='${imgAlt(p.imgSeeds[i] || i, 900, 1200)}'"/>`).join('')}
+      </div>
+      <div class="pdp-thumbs" id="pdpThumbs">
+        ${p.images.map((src, i) => `
+          <div class="pdp-thumb ${i === 0 ? 'on' : ''}" data-thumb="${i}">
+            <img src="${src}" alt="Thumbnail ${i + 1}" loading="lazy" onerror="this.src='${imgAlt(p.imgSeeds[i] || i, 200, 200)}'"/>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    <div class="pdp-info">
+      <span class="cat-lbl">${p.catLabel}</span>
+      <h1>${p.name}</h1>
+      <div class="pdp-rate">
+        <span class="st">★★★★★</span>
+        <span>${p.rating} · <a href="#reviews">${p.reviews} Reviews</a></span>
+      </div>
+      <div class="pdp-price">
+        <span class="now">${fmt(p.price)}</span>
+        ${p.off > 0 ? `<span class="was">${fmt(p.original)}</span><span class="off">${p.off}% OFF</span>` : ''}
+      </div>
+      <div class="pdp-tax">Inclusive of all taxes · Free shipping over ₹2,999</div>
+      ${p.stock <= 6 ? `<div class="pdp-limit"><span style="width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block"></span> Only ${p.stock} left in stock</div>` : ''}
+      ${p.isNew ? `<div class="pdp-limit" style="color:var(--success);border-color:rgba(127,191,138,.3)">✦ New Drop</div>` : ''}
+
+      <div class="opt-head"><h4>Select Size <span id="selSize">—</span></h4><button id="sizeGuideBtn">Size Guide</button></div>
+      <div class="sizes" id="pdpSizes">${sizesHtml}</div>
+
+      <div class="opt-head"><h4>Colour <span id="selColor">${p.colors[0].name}</span></h4></div>
+      <div class="colors" id="pdpColors">${colorsHtml}</div>
+
+      <div class="pdp-cta">
+        <div class="pdp-cta-row">
+          <button class="btn btn-primary" id="pdpAdd">Add to Bag</button>
+          <button class="btn btn-accent" id="pdpBuy">Buy Now</button>
+        </div>
+      </div>
+      <button class="pdp-wish ${wished ? 'on' : ''}" id="pdpWish">
+        <svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 1 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"/></svg>
+        <span>${wished ? 'Saved to Wishlist' : 'Add to Wishlist'}</span>
+      </button>
+
+      <div class="offer" style="margin-top:28px">
+        <span class="eyebrow">Exclusive Offer</span>
+        <p>Get an extra <strong>10% off</strong> on prepaid orders. Use code <strong>ZAP10</strong> at checkout.</p>
+      </div>
+
+      <div class="pincode">
+        <input type="text" id="pinInput" placeholder="Enter pincode" maxlength="6" inputmode="numeric"/>
+        <button id="pinCheck">Check</button>
+      </div>
+      <div id="pinResult" style="font-size:12px;color:var(--text-2);margin-bottom:20px;"></div>
+
+      <div class="assur">
+        <div><svg viewBox="0 0 24 24"><path d="M3 7h13l4 4v6h-3"/><circle cx="8" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg> Fast delivery</div>
+        <div><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg> Easy returns</div>
+        <div><svg viewBox="0 0 24 24"><path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-4z"/><path d="m9 12 2 2 4-4"/></svg> Secure payments</div>
+        <div><svg viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> COD available</div>
+      </div>
+
+      <div class="acc" id="pdpAcc">
+        <div class="acc-item open">
+          <button class="acc-head">Description <span class="ico"></span></button>
+          <div class="acc-body"><div class="acc-body-inner"><p>${p.description}</p></div></div>
+        </div>
+        <div class="acc-item">
+          <button class="acc-head">Fabric & Material <span class="ico"></span></button>
+          <div class="acc-body"><div class="acc-body-inner"><p><strong>Composition:</strong> ${p.fabric}</p><p style="margin-top:8px">Pre-shrunk, bio-washed and garment-dyed for a lived-in feel from day one.</p></div></div>
+        </div>
+        <div class="acc-item">
+          <button class="acc-head">Fit <span class="ico"></span></button>
+          <div class="acc-body"><div class="acc-body-inner"><p>${p.fit} fit. Model is 6'1" wearing size M.</p><ul style="margin-top:10px"><li>Drop shoulder</li><li>Ribbed collar</li><li>Tonal embroidery</li></ul></div></div>
+        </div>
+        <div class="acc-item">
+          <button class="acc-head">Size Guide <span class="ico"></span></button>
+          <div class="acc-body"><div class="acc-body-inner"><p>XS: 34" · S: 36" · M: 38" · L: 40" · XL: 42" · XXL: 44"</p><p style="margin-top:8px">Measurements are chest circumference in inches. For an oversized fit, size up.</p></div></div>
+        </div>
+        <div class="acc-item">
+          <button class="acc-head">Care Instructions <span class="ico"></span></button>
+          <div class="acc-body"><div class="acc-body-inner"><ul><li>Machine wash cold, inside out</li><li>Do not bleach</li><li>Tumble dry low</li><li>Warm iron if needed</li><li>Do not dry clean</li></ul></div></div>
+        </div>
+        <div class="acc-item">
+          <button class="acc-head">Shipping <span class="ico"></span></button>
+          <div class="acc-body"><div class="acc-body-inner"><p>Free shipping on orders over ₹2,999. Standard delivery in 3–6 business days. Express delivery available at checkout.</p></div></div>
+        </div>
+        <div class="acc-item">
+          <button class="acc-head">Returns <span class="ico"></span></button>
+          <div class="acc-body"><div class="acc-body-inner"><p>30-day free returns. Items must be unworn with tags attached. Start a return from your account page.</p></div></div>
+        </div>
+        <div class="acc-item">
+          <button class="acc-head">Authenticity <span class="ico"></span></button>
+          <div class="acc-body"><div class="acc-body-inner"><p>Every ZAPWEAR piece comes with a woven authenticity label and a unique serial number. Verify at zapwear.com/verify.</p></div></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const stageImgs = $$('#pdpStage img');
+  const thumbs = $$('#pdpThumbs .pdp-thumb');
+  function setImg(i) {
+    stageImgs.forEach((im, idx) => im.classList.toggle('on', idx === i));
+    thumbs.forEach((t, idx) => t.classList.toggle('on', idx === i));
+  }
+  thumbs.forEach(t => t.addEventListener('click', () => setImg(+t.dataset.thumb)));
+
+  let selectedSize = null;
+  let selectedColor = p.colors[0];
+  $('#pdpSizes').addEventListener('click', e => {
+    const btn = e.target.closest('.size');
+    if (!btn || btn.classList.contains('dis')) return;
+    $$('#pdpSizes .size').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    selectedSize = btn.dataset.size;
+    $('#selSize').textContent = selectedSize;
+  });
+
+  $('#pdpColors').addEventListener('click', e => {
+    const el = e.target.closest('.color');
+    if (!el) return;
+    $$('#pdpColors .color').forEach(c => c.classList.remove('on'));
+    el.classList.add('on');
+    selectedColor = p.colors.find(c => c.name === el.dataset.color);
+    $('#selColor').textContent = selectedColor.name;
+  });
+
+  $('#pdpAdd').addEventListener('click', () => {
+    if (!selectedSize) { showToast('Please select a size'); return; }
+    addToCart(p, selectedSize, selectedColor);
+  });
+
+  $('#pdpBuy').addEventListener('click', () => {
+    if (!selectedSize) { showToast('Please select a size'); return; }
+    addToCart(p, selectedSize, selectedColor);
+    setTimeout(() => { closeCart(); showToast('Proceeding to checkout…'); }, 600);
+  });
+
+  $('#pdpWish').addEventListener('click', () => toggleWishlist(p));
+
+  $$('#pdpAcc .acc-head').forEach(head => {
+    head.addEventListener('click', () => {
+      const item = head.parentElement;
+      const body = item.querySelector('.acc-body');
+      const isOpen = item.classList.contains('open');
+      $$('#pdpAcc .acc-item').forEach(i => {
+        i.classList.remove('open');
+        i.querySelector('.acc-body').style.maxHeight = null;
+      });
+      if (!isOpen) {
+        item.classList.add('open');
+        body.style.maxHeight = body.scrollHeight + 'px';
+      }
+    });
+  });
+  const firstAcc = $('#pdpAcc .acc-item.open .acc-body');
+  if (firstAcc) firstAcc.style.maxHeight = firstAcc.scrollHeight + 'px';
+
+  $('#pinCheck').addEventListener('click', () => {
+    const pin = $('#pinInput').value.trim();
+    const res = $('#pinResult');
+    if (!/^\d{6}$/.test(pin)) {
+      res.innerHTML = '<span style="color:var(--danger)">Please enter a valid 6-digit pincode.</span>';
+      return;
+    }
+    res.innerHTML = '<span style="color:var(--success)">✓ Delivery available · Expected by ' + new Date(Date.now() + 4 * 864e5).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) + '</span>';
+  });
+
+  $('#sizeGuideBtn').addEventListener('click', () => showToast('Size guide — XS to XXL. Size up for oversized fit.'));
+
+  const recs = PRODUCTS.filter(x => x.id !== p.id && x.cat === p.cat).slice(0, 4);
+  const fallback = PRODUCTS.filter(x => x.id !== p.id).slice(0, 4);
+  $('#pdpRecs').innerHTML = (recs.length >= 2 ? recs : fallback).map(productCard).join('');
+
+  renderReviews(p);
+  requestAnimationFrame(observeReveals);
+}
+
+function renderReviews(p) {
+  const dist = [5, 4, 3, 2, 1].map(stars => {
+    const pct = stars === 5 ? 72 : stars === 4 ? 18 : stars === 3 ? 6 : stars === 2 ? 3 : 1;
+    const count = Math.round(p.reviews * pct / 100);
+    return { stars, pct, count };
+  });
+  const sampleReviews = [
+    { name: 'Aarav Mehta', initial: 'A', rating: 5, title: 'Heavyweight and perfect', text: 'The fabric is genuinely 240 GSM — you can feel the difference. Fit is exactly as described. Will buy again.', date: '2 weeks ago', photos: [p.images[0], p.images[1]] },
+    { name: 'Ishita Rao', initial: 'I', rating: 4, title: 'Great quality, slightly large', text: 'Love the boxy fit. I sized down and it was perfect. Colour is rich and hasn\'t faded after 5 washes.', date: '1 month ago', photos: [] },
+    { name: 'Kabir Singh', initial: 'K', rating: 5, title: 'Worth every rupee', text: 'This is my third ZAPWEAR piece. The attention to detail — labels, stitching, packaging — is unmatched at this price.', date: '1 month ago', photos: [p.images[2]] }
+  ];
+
+  $('#pdpReviews').innerHTML = `
+    <div class="rev-summary">
+      <div class="rev-big">${p.rating}</div>
+      <div class="rev-stars">★★★★★</div>
+      <div class="rev-count">Based on ${p.reviews} reviews</div>
+      <div class="rev-dist">
+        ${dist.map(d => `
+          <div class="rev-bar">
+            <span class="lbl">${d.stars}★</span>
+            <div class="track"><i style="width:${d.pct}%"></i></div>
+            <span class="n">${d.count}</span>
+          </div>
+        `).join('')}
+      </div>
+      <button class="btn btn-ghost btn-sm btn-block" id="writeReview">Write a Review</button>
+    </div>
+    <div class="rev-list">
+      ${sampleReviews.map(r => `
+        <div class="rev">
+          <div class="rev-head">
+            <div class="rev-user">
+              <div class="rev-av">${r.initial}</div>
+              <div>
+                <strong>${r.name}</strong>
+                <span>Verified Purchase · ${r.date}</span>
+              </div>
+            </div>
+            <div class="rev-st">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</div>
+          </div>
+          <div class="rev-title">${r.title}</div>
+          <div class="rev-text">${r.text}</div>
+          ${r.photos.length ? `<div class="rev-photos">${r.photos.map(src => `<img src="${src}" alt="Customer photo" loading="lazy" onerror="this.src='${imgAlt(0,200,200)}'"/>`).join('')}</div>` : ''}
+          <div class="rev-foot">
+            <button>👍 Helpful</button>
+            <button>💬 Reply</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  const wr = $('#writeReview');
+  if (wr) wr.addEventListener('click', () => showToast('Review form coming soon'));
+}
+
+/* ============================================================
+   Routing
+   ============================================================ */
+function go(view, opts = {}) {
+  $$('.view').forEach(v => v.classList.remove('on'));
+  const el = $('#view-' + view);
+  if (el) el.classList.add('on');
+  state.view = view;
+
+  if (view === 'collection') {
+    if (opts.cat) state.collection = opts.cat;
+    renderCollection();
+  }
+  if (view === 'product') {
+    if (opts.id) renderProduct(opts.id);
+  }
+  if (view === 'home') {
+    renderHome();
+  }
+
+  window.scrollTo({ top: 0, behavior: 'auto' });
+
+  $$('.mnav-item').forEach(m => {
+    const nav = m.dataset.nav;
+    m.classList.toggle('active', nav === view);
+  });
+
+  requestAnimationFrame(observeReveals);
+}
+
+/* ============================================================
+   Event delegation
+   ============================================================ */
+document.addEventListener('click', e => {
+  const navEl = e.target.closest('[data-nav]');
+  if (navEl) {
+    e.preventDefault();
+    const view = navEl.dataset.nav;
+    const cat = navEl.dataset.cat;
+    if (view === 'collection') go('collection', { cat: cat || 'all' });
+    else go(view);
+    closeCart();
+    closeSearch();
+    return;
+  }
+
+  const quick = e.target.closest('[data-quick]');
+  if (quick) {
+    e.stopPropagation();
+    const p = PRODUCTS.find(x => x.id === quick.dataset.quick);
+    if (p) addToCart(p, p.sizes[0], p.colors[0]);
+    return;
+  }
+
+  const wishBtn = e.target.closest('.pcard-wish');
+  if (wishBtn) {
+    e.stopPropagation();
+    const p = PRODUCTS.find(x => x.id === wishBtn.dataset.id);
+    if (p) toggleWishlist(p);
+    return;
+  }
+
+  const card = e.target.closest('.pcard');
+  if (card && !e.target.closest('[data-quick]') && !e.target.closest('.pcard-wish')) {
+    go('product', { id: card.dataset.id });
+    return;
+  }
+
+  const inc = e.target.closest('[data-inc]');
+  if (inc) { updateQty(inc.dataset.inc, 1); return; }
+  const dec = e.target.closest('[data-dec]');
+  if (dec) { updateQty(dec.dataset.dec, -1); return; }
+  const rem = e.target.closest('[data-remove]');
+  if (rem) { removeFromCart(rem.dataset.remove); return; }
+
+  const fsize = e.target.closest('[data-fsize]');
+  if (fsize) {
+    const s = fsize.dataset.fsize;
+    if (state.filters.sizes.has(s)) state.filters.sizes.delete(s);
+    else state.filters.sizes.add(s);
+    renderCollection();
+    return;
+  }
+
+  const fcolor = e.target.closest('[data-fcolor]');
+  if (fcolor) {
+    const c = fcolor.dataset.fcolor;
+    if (state.filters.colors.has(c)) state.filters.colors.delete(c);
+    else state.filters.colors.add(c);
+    renderCollection();
+    return;
+  }
+
+  const chip = e.target.closest('.chip');
+  if (chip) {
+    if (chip.dataset.q) {
+      $('#searchInput').value = chip.dataset.q;
+      performSearch(chip.dataset.q);
+    } else if (chip.dataset.nav) {
+      closeSearch();
+      go(chip.dataset.nav, { cat: chip.dataset.cat || 'all' });
+    }
+    return;
+  }
+});
+
+document.addEventListener('change', e => {
+  if (e.target.matches('[data-fcat]')) {
+    const c = e.target.dataset.fcat;
+    if (e.target.checked) state.filters.cats.add(c);
+    else state.filters.cats.delete(c);
+    renderCollection();
+  }
+  if (e.target.matches('[data-fprice]')) {
+    const v = e.target.dataset.fprice;
+    if (v === 'all') state.filters.price = null;
+    else state.filters.price = v.split('-').map(Number);
+    renderCollection();
+  }
+  if (e.target.matches('[data-frating]')) {
+    const v = e.target.dataset.frating;
+    state.filters.rating = v === 'all' ? null : Number(v);
+    renderCollection();
+  }
+  if (e.target.matches('[data-fstock]')) {
+    state.filters.stock = e.target.checked ? true : null;
+    renderCollection();
+  }
+});
+
+$$('[data-fgroup] h5').forEach(h => {
+  h.addEventListener('click', () => h.parentElement.classList.toggle('open'));
+});
+
+$('#sortSel').addEventListener('change', e => {
+  state.sort = e.target.value;
+  renderCollection();
+});
+
+$('#filtersBtn').addEventListener('click', () => {
+  $('#filtersPanel').classList.toggle('mobile-on');
+});
+
+/* ============================================================
+   Search
+   ============================================================ */
+function openSearch() {
+  $('#searchOverlay').classList.add('on');
+  document.body.classList.add('no-scroll');
+  setTimeout(() => $('#searchInput').focus(), 200);
+}
+function closeSearch() {
+  $('#searchOverlay').classList.remove('on');
+  document.body.classList.remove('no-scroll');
+  $('#searchInput').value = '';
+  $('#searchResults').innerHTML = '';
+  $('#searchDefault').style.display = 'block';
+}
+
+function performSearch(q) {
+  q = q.trim().toLowerCase();
+  if (!q) {
+    $('#searchDefault').style.display = 'block';
+    $('#searchResults').innerHTML = '';
+    return;
+  }
+  $('#searchDefault').style.display = 'none';
+  const results = PRODUCTS.filter(p =>
+    p.name.toLowerCase().includes(q) ||
+    p.catLabel.toLowerCase().includes(q) ||
+    p.tags.some(t => t.includes(q))
+  ).slice(0, 8);
+  const el = $('#searchResults');
+  if (results.length === 0) {
+    el.innerHTML = `<p class="search-hint">No results for "${q}". Try a different search.</p>`;
+  } else {
+    el.innerHTML = `<p class="search-label">${results.length} result${results.length !== 1 ? 's' : ''}</p><div class="search-results">${results.map(productCard).join('')}</div>`;
+  }
+}
+
+$('#searchInput').addEventListener('input', e => performSearch(e.target.value));
+$('#searchBtn').addEventListener('click', openSearch);
+$('#mSearch').addEventListener('click', openSearch);
+$('#searchClose').addEventListener('click', closeSearch);
+$('#wishBtn').addEventListener('click', () => {
+  if (state.wishlist.length === 0) { showToast('Your wishlist is empty'); return; }
+  showToast(`${state.wishlist.length} item${state.wishlist.length > 1 ? 's' : ''} in wishlist`);
+});
+$('#mWish').addEventListener('click', () => {
+  if (state.wishlist.length === 0) { showToast('Your wishlist is empty'); return; }
+  showToast(`${state.wishlist.length} item${state.wishlist.length > 1 ? 's' : ''} in wishlist`);
+});
+
+/* ============================================================
+   Cart / Overlay
+   ============================================================ */
+$('#cartBtn').addEventListener('click', openCart);
+$('#cartClose').addEventListener('click', closeCart);
+$('#overlay').addEventListener('click', () => { closeCart(); closeSearch(); });
+$('#viewBagBtn').addEventListener('click', () => { closeCart(); showToast('Bag view coming soon'); });
+$('#checkoutBtn').addEventListener('click', () => {
+  if (state.cart.length === 0) { showToast('Your bag is empty'); return; }
+  closeCart();
+  showToast('Redirecting to secure checkout…');
+});
+
+/* ============================================================
+   Nav scroll
+   ============================================================ */
+window.addEventListener('scroll', () => {
+  $('#nav').classList.toggle('scrolled', window.scrollY > 30);
+}, { passive: true });
+
+/* ============================================================
+   Mega menu
+   ============================================================ */
+let megaTimer;
+$$('[data-mega]').forEach(link => {
+  link.addEventListener('mouseenter', () => {
+    clearTimeout(megaTimer);
+    $('#mega').classList.add('open');
+  });
+});
+$('#mega').addEventListener('mouseleave', () => {
+  megaTimer = setTimeout(() => $('#mega').classList.remove('open'), 200);
+});
+$$('.nav-link').forEach(l => {
+  l.addEventListener('mouseleave', () => {
+    megaTimer = setTimeout(() => $('#mega').classList.remove('open'), 300);
+  });
+});
+
+/* ============================================================
+   Countdown
+   ============================================================ */
+const dropEnd = Date.now() + (2 * 864e5) + (14 * 36e5) + (39 * 6e4);
+function tickCountdown() {
+  const diff = Math.max(0, dropEnd - Date.now());
+  const d = Math.floor(diff / 864e5);
+  const h = Math.floor(diff % 864e5 / 36e5);
+  const m = Math.floor(diff % 36e5 / 6e4);
+  const s = Math.floor(diff % 6e4 / 1e3);
+  const set = (id, v) => { const el = $(id); if (el) el.textContent = String(v).padStart(2, '0'); };
+  set('#cd-d', d); set('#cd-h', h); set('#cd-m', m); set('#cd-s', s);
+}
+setInterval(tickCountdown, 1000);
+tickCountdown();
+
+/* ============================================================
+   Newsletter
+   ============================================================ */
+$('#newsForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const input = e.target.querySelector('input');
+  if (input.value) {
+    showToast('✓ Subscribed. Welcome to ZAPWEAR.');
+    input.value = '';
+  }
+});
+
+/* ============================================================
+   Reveal on scroll
+   ============================================================ */
+const revealObserver = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('in');
+      revealObserver.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.12, rootMargin: '0px 0px -60px 0px' });
+
+function observeReveals() {
+  $$('.reveal:not(.in)').forEach(el => revealObserver.observe(el));
+}
+
+/* ============================================================
+   Init
+   ============================================================ */
+function init() {
+  loadState();
+  renderHome();
+  updateCartUI();
+  observeReveals();
+
+  setTimeout(() => {
+    $('#preloader').classList.add('done');
+  }, 700);
+
+  go('home');
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
